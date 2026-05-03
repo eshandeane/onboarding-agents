@@ -25,15 +25,12 @@ Smith automates the entire app store submission screenshot pipeline for Cut+Dry 
 ### Installation
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/eshandeane/onboarding-agents.git
-cd onboarding-agents
-
-# 2. Run the install script
-bash smith/install.sh
+cd onboarding-agents/smith
+npm install
 ```
 
-The install script will:
+That's it. `npm install` will automatically:
 - Install Node.js dependencies (`playwright`)
 - Download the Chromium browser for Playwright
 - Register the Smith agent with Claude Code at `~/.claude/agents/smith.md`
@@ -85,5 +82,5 @@ Composites are saved to `smith/{AccountName}/{android,ios,ipad}/` and automatica
 
 ```bash
 git pull
-bash smith/install.sh
+cd smith && npm install
 ```
