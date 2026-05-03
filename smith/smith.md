@@ -68,12 +68,12 @@ Update `screenshot-templates/generate.mjs` ACCOUNTS object with:
 
 ## Step 4: Capture Screenshots
 
-**Before running**: Clean out any old screenshots for this account: `rm -rf ~/repos/onboarding-agent/smith/{Account}/`
+**Before running**: Clean out any old screenshots for this account: `rm -rf SMITH_PATH/{Account}/`
 
 Run the capture script:
 
 ```bash
-cd ~/repos/onboarding-agent/smith/screenshot-templates && node capture.mjs
+cd SMITH_PATH/screenshot-templates && node capture.mjs
 ```
 
 The script handles everything automatically:
@@ -108,7 +108,7 @@ The script handles everything automatically:
 Run the composite generator:
 
 ```bash
-cd ~/repos/onboarding-agent/smith/screenshot-templates && node generate.mjs
+cd SMITH_PATH/screenshot-templates && node generate.mjs
 ```
 
 This overlays screenshots into realistic device frame PNGs with marketing titles on a colored background.
@@ -210,14 +210,14 @@ After everything is done:
 
 ## Key Files
 
-All files live under `~/repos/onboarding-agent/smith/`:
+All files live under `SMITH_PATH/`:
 
-- Capture script: `~/repos/onboarding-agent/smith/screenshot-templates/capture.mjs`
-- Composite generator: `~/repos/onboarding-agent/smith/screenshot-templates/generate.mjs`
-- HTML template: `~/repos/onboarding-agent/smith/screenshot-templates/compose.html`
-- Device frames: `~/repos/onboarding-agent/smith/screenshot-templates/frames/iphone.png`, `android.png`, `ipad.png`
-- Raw screenshots: `~/repos/onboarding-agent/smith/{Account}/{Android,Iphone 6.5,Ipad 12.9}/`
-- Final composites: `~/repos/onboarding-agent/smith/{Account}/{android,ios,ipad}/`
+- Capture script: `SMITH_PATH/screenshot-templates/capture.mjs`
+- Composite generator: `SMITH_PATH/screenshot-templates/generate.mjs`
+- HTML template: `SMITH_PATH/screenshot-templates/compose.html`
+- Device frames: `SMITH_PATH/screenshot-templates/frames/iphone.png`, `android.png`, `ipad.png`
+- Raw screenshots: `SMITH_PATH/{Account}/{Android,Iphone 6.5,Ipad 12.9}/`
+- Final composites: `SMITH_PATH/{Account}/{android,ios,ipad}/`
 
 ## Self-Improvement (after every run)
 
