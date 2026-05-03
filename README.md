@@ -32,8 +32,10 @@ npm install
 
 That's it. `npm install` will automatically:
 - Install Node.js dependencies (`playwright`)
-- Download the Chromium browser for Playwright
-- Register the Smith agent with Claude Code at `~/.claude/agents/smith.md`
+- Download the Chromium browser to `~/Library/Caches/ms-playwright/`
+- Register the Smith agent at `~/.claude/agents/smith.md`
+
+Scripts, device frames, and generated screenshots all stay in the cloned repo directory. Nothing else is moved or copied.
 
 ### Atlassian MCP setup
 
