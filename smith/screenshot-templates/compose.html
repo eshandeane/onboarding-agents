@@ -1,0 +1,81 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: var(--canvas-w);
+        height: var(--canvas-h);
+        background: var(--bg-color);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        overflow: hidden;
+      }
+
+      .title {
+        color: var(--title-color, white);
+        font-size: var(--title-size);
+        font-weight: 700;
+        text-align: center;
+        padding: var(--title-pad-top) 40px 0;
+        line-height: 1.15;
+      }
+
+      .device-wrapper {
+        flex: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: var(--device-pad-top);
+      }
+
+      .device {
+        position: relative;
+        width: var(--device-w);
+        height: var(--device-h);
+      }
+
+      /* Screenshot sits behind the frame */
+      .device .screen-img {
+        position: absolute;
+        left: var(--screen-x);
+        top: var(--screen-y);
+        width: var(--screen-w);
+        height: var(--screen-h);
+        object-fit: cover;
+        object-position: top;
+        z-index: 1;
+        border-radius: var(--screen-radius, 0);
+      }
+
+      /* Device frame PNG overlays on top */
+      .device .frame-img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">TITLE_TEXT</div>
+    <div class="device-wrapper">
+      <div class="device">
+        <img class="screen-img" src="SCREENSHOT_PATH" />
+        <img class="frame-img" src="FRAME_PATH" />
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+outputs/
+# Generated screenshot outputs (account-specific runs)
+smith/Hillcrest/
+smith/Oneworldfoods/
+smith/Vitco/
+smith/Whatchefswant/

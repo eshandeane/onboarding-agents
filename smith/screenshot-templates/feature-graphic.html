@@ -1,0 +1,108 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        width: 1024px;
+        height: 500px;
+        background: var(--bg-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        overflow: hidden;
+        padding: 0 60px;
+      }
+
+      .left {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        max-width: 400px;
+      }
+
+      .app-name {
+        color: var(--title-color, white);
+        font-size: 48px;
+        font-weight: 800;
+        line-height: 1.1;
+        margin-bottom: 16px;
+      }
+
+      .tagline {
+        color: var(--title-color, white);
+        font-size: 20px;
+        font-weight: 400;
+        opacity: 0.85;
+        line-height: 1.3;
+      }
+
+      .phones {
+        display: flex;
+        align-items: flex-end;
+        gap: -10px;
+        height: 100%;
+        padding-top: 40px;
+      }
+
+      .phone {
+        position: relative;
+        width: 200px;
+        height: 410px;
+      }
+
+      .phone:last-child {
+        width: 178px;
+        height: 365px;
+        margin-left: -10px;
+      }
+
+      /* Screen area within the iPhone frame (from DEVICES config: 46,46,608,1321 in 700x1414) */
+      .phone .screen-img {
+        position: absolute;
+        left: 6.6%;
+        top: 3.3%;
+        width: 86.9%;
+        height: 93.4%;
+        object-fit: cover;
+        object-position: top;
+        z-index: 1;
+        border-radius: 16px;
+      }
+
+      .phone .frame-img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="left">
+      <div class="app-name">APP_NAME_TEXT</div>
+      <div class="tagline">Order, shop, chat & track history with our app</div>
+    </div>
+    <div class="phones">
+      <div class="phone">
+        <img class="screen-img" src="SCREENSHOT_1_PATH" />
+        <img class="frame-img" src="FRAME_PATH" />
+      </div>
+      <div class="phone">
+        <img class="screen-img" src="SCREENSHOT_2_PATH" />
+        <img class="frame-img" src="FRAME_PATH" />
+      </div>
+    </div>
+  </body>
+</html>
