@@ -49,25 +49,25 @@ Then authenticate when prompted in Claude Code.
 
 ### Usage
 
-Once installed, open Claude Code and run the Smith agent:
+From anywhere in your terminal:
 
-```
-/agents → smith
-```
-
-Or start a new conversation and say:
-
-```
-Run smith on https://yourapp.cutanddry.com
+```bash
+smith
 ```
 
-Smith will ask for:
+It will prompt for the app URL, then launch Claude Code and handle the rest. Smith will ask for:
 - Login credentials for the app
 - Jira epic key (e.g. `DOT-12345`)
 - App name (e.g. "Hillcrest Foodservice")
 - Brand color (hex, e.g. `#E87722`)
 
-Then walk away. It logs progress to `smith/outputs/screensmith-progress.log` if you want to follow along.
+You can also pass the URL directly:
+
+```bash
+smith https://hillcrest.cutanddry.com
+```
+
+Then walk away. Progress is logged to `smith/outputs/screensmith-progress.log`.
 
 ### Output
 

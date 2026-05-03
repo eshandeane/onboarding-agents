@@ -2,8 +2,11 @@
   "name": "screensmith",
   "version": "1.0.0",
   "main": "index.js",
+  "bin": {
+    "smith": "./bin/smith.js"
+  },
   "scripts": {
-    "postinstall": "npx playwright install chromium && mkdir -p ~/.claude/agents ~/.claude/agents/learnings && sed \"s|SMITH_PATH|$(pwd)|g\" smith.md > ~/.claude/agents/smith.md && echo '\\nSmith agent registered at ~/.claude/agents/smith.md'"
+    "postinstall": "npx playwright install chromium && mkdir -p ~/.claude/agents ~/.claude/agents/learnings && sed \"s|SMITH_PATH|$(pwd)|g\" smith.md > ~/.claude/agents/smith.md && ln -sf \"$(pwd)/bin/smith.js\" \"$(npm config get prefix)/bin/smith\" && echo '\\nSmith installed. Type smith to get started.'"
   },
   "keywords": [],
   "author": "",
