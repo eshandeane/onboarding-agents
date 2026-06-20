@@ -8,11 +8,11 @@ AI agents for automating Cut+Dry distributor onboarding tasks.
 
 Smith automates the entire app store submission screenshot pipeline for Cut+Dry white-label apps. Give it a distributor URL and it handles everything: captures screenshots across all required device sizes, composites them into on-brand marketing images, and creates a Jira ticket with all assets attached.
 
-**Time saved: 2–3 hours → ~5 minutes per distributor.**
+**Time saved: 2–3 hours → ~15 minutes per distributor.**
 
 ### What it does
 
-1. Logs into the white-label app and captures 6 pages at 3 device sizes (18 screenshots)
+1. Logs into the Cut+Dry white-label app and captures 6 pages at 3 device sizes (18 screenshots)
 2. Composites screenshots into App Store / Play Store ready images with device frames, brand colors, and marketing titles
 3. Creates a Jira ticket under the provided epic and attaches all assets
 
