@@ -1,6 +1,23 @@
-import { chromium } from "playwright";
+import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
+
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const AB_BIN = `${process.env.HOME}/.npm-global/bin/agent-browser`;
+const ENV = {
+  ...process.env,
+  AGENT_BROWSER_EXECUTABLE_PATH: CHROME,
+  AGENT_BROWSER_ALLOW_FILE_ACCESS: "true",
+};
+
+function ab(...args) {
+  const result = spawnSync(AB_BIN, args, {
+    encoding: "utf8",
+    env: ENV,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return (result.stdout || "").trim();
+}
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const FRAMES_DIR = path.join(import.meta.dirname, "frames");
@@ -14,14 +31,22 @@ const FEATURE_TEMPLATE = fs.readFileSync(
 );
 
 // Returns true if a hex color is too dark for a good background
-// (white text on dark bg looks bad in app store screenshots)
+// (white text on dark bg would be invisible)
 function isDarkColor(hex) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  // Relative luminance — threshold 0.2 catches blacks, dark browns, navy etc.
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance < 0.35;
+}
+
+// Returns true if a hex color is too light for white text (near-white backgrounds)
+function isLightColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.85;
 }
 
 // Device configs: canvas size = app store required size
@@ -105,21 +130,10 @@ const PAGES = [
 ];
 
 const ACCOUNTS = {
-  Oneworldfoods: { color: "#2D2926", appName: "One World Foods" },
-  Hillcrest: { color: "#F17E21", appName: "Hillcrest Foodservice" },
-  Vitco: { color: "#1B2A4A", appName: "Vitco Foods" },
-  Whatchefswant: { color: "#ED1C24", appName: "What Chefs Want" },
+  Southasianfood: { color: "#DF382F", appName: "South Asian Food" },
 };
 
-async function generateComposite(
-  browser,
-  account,
-  bgColor,
-  deviceKey,
-  deviceCfg,
-  pageName,
-  title
-) {
+function generateComposite(account, bgColor, deviceKey, deviceCfg, pageName, title) {
   // Map device keys to capture folder names (from capture.mjs)
   const captureFolderMap = {
     android: "Android",
@@ -149,9 +163,11 @@ async function generateComposite(
   const frameFileUrl = `file://${path.join(FRAMES_DIR, deviceCfg.framePng)}`;
 
   // Dark brand colors → white background with brand color text
+  // Very light brand colors → brand background with dark text (avoids white-on-cream invisible text)
   const dark = isDarkColor(bgColor);
+  const light = !dark && isLightColor(bgColor);
   const actualBg = dark ? "#FFFFFF" : bgColor;
-  const titleColor = dark ? bgColor : "#FFFFFF";
+  const titleColor = dark ? bgColor : light ? "#1a1a1a" : "#FFFFFF";
 
   let html = TEMPLATE.replace("TITLE_TEXT", title)
     .replace("SCREENSHOT_PATH", screenshotFileUrl)
@@ -181,23 +197,21 @@ async function generateComposite(
   const tmpHtml = path.join(outDir, `_tmp_${pageName}.html`);
   fs.writeFileSync(tmpHtml, html);
 
-  const page = await browser.newPage();
-  await page.setViewportSize({
-    width: deviceCfg.canvasW,
-    height: deviceCfg.canvasH,
-  });
-  await page.goto(`file://${tmpHtml}`, { waitUntil: "load" });
-  await page.screenshot({ path: outPath, type: "png" });
-  await page.close();
+  ab("set", "viewport", String(deviceCfg.canvasW), String(deviceCfg.canvasH));
+  ab("open", `file://${tmpHtml}`);
+  ab("wait", "--load", "networkidle");
+  ab("wait", "500");
+  ab("screenshot", outPath);
   fs.unlinkSync(tmpHtml);
 
   console.log(`  OK ${outPath}`);
 }
 
-async function generateFeatureGraphic(browser, account, bgColor, appName) {
+function generateFeatureGraphic(account, bgColor, appName) {
   const dark = isDarkColor(bgColor);
+  const light = !dark && isLightColor(bgColor);
   const actualBg = dark ? "#FFFFFF" : bgColor;
-  const titleColor = dark ? bgColor : "#FFFFFF";
+  const titleColor = dark ? bgColor : light ? "#1a1a1a" : "#FFFFFF";
 
   // Use raw iPhone captures (untouched by generate) for the phone previews
   const screenshot1 = path.join(ROOT, account, "Iphone 6.5", "home-page.png");
@@ -230,45 +244,32 @@ async function generateFeatureGraphic(browser, account, bgColor, appName) {
   const tmpHtml = path.join(outDir, "_tmp_feature-graphic.html");
   fs.writeFileSync(tmpHtml, html);
 
-  const page = await browser.newPage();
-  await page.setViewportSize({ width: 1024, height: 500 });
-  await page.goto(`file://${tmpHtml}`, { waitUntil: "load" });
-  await page.screenshot({ path: outPath, type: "png" });
-  await page.close();
+  ab("set", "viewport", "1024", "500");
+  ab("open", `file://${tmpHtml}`);
+  ab("wait", "--load", "networkidle");
+  ab("wait", "500");
+  ab("screenshot", outPath);
   fs.unlinkSync(tmpHtml);
 
   console.log(`  OK ${outPath}`);
 }
 
-async function main() {
-  const browser = await chromium.launch({
-    args: ["--allow-file-access-from-files", "--disable-web-security"],
-  });
-
+function main() {
   for (const [account, { color: bgColor, appName }] of Object.entries(ACCOUNTS)) {
     console.log(`\n=== ${account} ===`);
     for (const [deviceKey, deviceCfg] of Object.entries(DEVICES)) {
       console.log(`\n  Device: ${deviceKey}`);
       for (let i = 0; i < PAGES.length; i++) {
-        await generateComposite(
-          browser,
-          account,
-          bgColor,
-          deviceKey,
-          deviceCfg,
-          PAGES[i],
-          TITLES[i]
-        );
+        generateComposite(account, bgColor, deviceKey, deviceCfg, PAGES[i], TITLES[i]);
       }
     }
 
-    // Generate Feature Graphic for Google Play
     console.log(`\n  Feature Graphic:`);
-    await generateFeatureGraphic(browser, account, bgColor, appName);
+    generateFeatureGraphic(account, bgColor, appName);
   }
 
-  await browser.close();
+  ab("close");
   console.log("\nDone!");
 }
 
-main().catch(console.error);
+main();
