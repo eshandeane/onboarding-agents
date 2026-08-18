@@ -1,8 +1,12 @@
-import { chromium } from "playwright";
+import { spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
+const CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const AB_BIN = `${process.env.HOME}/.npm-global/bin/agent-browser`;
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+
+const ENV = { ...process.env, AGENT_BROWSER_EXECUTABLE_PATH: CHROME };
 
 const VIEWPORTS = {
   "Iphone 6.5": { width: 428, height: 930 },
@@ -12,318 +16,239 @@ const VIEWPORTS = {
 
 const PAGES = [
   { name: "home-page", path: "/white-label-home" },
-  { name: "order-guide", path: "/place-order", clickTab: null },
+  { name: "order-guide", path: "/place-order" },
   { name: "catalog", path: "/place-order", clickTab: "Catalog" },
   { name: "order-history", path: "/revised-order-history" },
   { name: "chat", path: "/chat-v2" },
-  // order-check-in path is resolved dynamically per account — see resolveOrderCheckInPath()
   { name: "order-check-in", path: null },
 ];
 
 const ACCOUNTS = [
   {
-    name: "Oneworldfoods",
-    baseUrl: "https://oneworldfoods.cutanddry.com",
-    email: "michael+owm@cutanddry.com",
+    name: "Southasianfood",
+    baseUrl: "https://southasianfood.cutanddry.com",
+    email: "michael+saf@cutanddry.com",
     password: "password",
   },
 ];
 
-async function dismissBanner(page) {
-  try {
-    const dismissed = await page.evaluate(() => {
-      // Inject a persistent CSS rule — React can't override <style> tags
-      if (!document.querySelector("#hide-banner-style")) {
-        const style = document.createElement("style");
-        style.id = "hide-banner-style";
-        style.textContent =
-          'a[href*="getMobileApp"] { display: none !important; }';
-        document.head.appendChild(style);
+function ab(...args) {
+  const result = spawnSync(AB_BIN, args, {
+    encoding: "utf8",
+    env: ENV,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  return (result.stdout || "").trim();
+}
+
+// Reliable synchronous sleep — ab("wait", "ms") may be treated as a selector wait
+function sleep(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Poll until body has meaningful text content (React has rendered)
+function waitForContent(label = "page", timeout = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const raw = ab("eval", "String(document.body ? document.body.innerText.trim().length : 0)");
+    if ((parseInt(raw) || 0) > 200) return;
+    sleep(500);
+  }
+  console.log(`    Warning: ${label} may not have fully loaded`);
+}
+
+const BANNER_JS =
+  "var s=document.getElementById('__hbs');if(!s){s=document.createElement('style');s.id='__hbs';s.textContent='a[href*=getMobileApp]{display:none!important}';document.head.appendChild(s)}";
+
+function dismissBanner() {
+  ab("eval", BANNER_JS);
+}
+
+// When /place-order shows a "Select Order Guide" modal, click the first OG row to load the order guide
+function selectOrderGuideIfModalPresent() {
+  const check = stripQuotes(
+    ab("eval", "document.body.innerText.includes('Select Order Guide') ? 'yes' : 'no'")
+  );
+  if (check !== "yes") return;
+
+  console.log("    Select Order Guide modal — clicking first OG option...");
+
+  ab(
+    "eval",
+    `(function(){
+      // Find the "Select Order Guide" heading text node
+      var heading = Array.from(document.querySelectorAll('*')).find(function(el){
+        return el.children.length === 0 && el.textContent.trim() === 'Select Order Guide';
+      });
+      if (!heading) return;
+
+      // Walk up to the modal card container
+      var card = heading.parentElement;
+      for (var i = 0; i < 8; i++) {
+        if (!card || card === document.body) return;
+        // Stop when we reach a container that has clickable OG rows inside it
+        var rows = Array.from(card.querySelectorAll('*')).filter(function(el){
+          if (el.children.length > 2) return false;
+          var text = el.textContent.trim();
+          return text.length > 2 && text !== 'Select Order Guide' &&
+                 !text.includes('Please select') && text !== '\xD7' &&
+                 window.getComputedStyle(el).cursor === 'pointer';
+        });
+        if (rows.length >= 1) { rows[0].click(); return; }
+        card = card.parentElement;
       }
-      return "injected css";
-    });
-    if (dismissed) {
-      await page.waitForTimeout(500);
-      console.log(`  Banner dismissed (${dismissed})`);
-      return true;
-    }
-  } catch {}
-  console.log("  No banner found");
-  return false;
+    })()`
+  );
+
+  sleep(2000);
+  waitForPageReady();
+  waitForContent("order guide");
 }
 
-async function login(page, account) {
+function waitForPageReady() {
+  ab("wait", "--load", "networkidle");
+  sleep(3000);
+}
+
+// Fill any input field using React-compatible native setter (works for type="text" and type="email")
+function fillInput(selector, value) {
+  const escaped = value.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  ab(
+    "eval",
+    `(function(){
+      var el = document.querySelector('${selector}');
+      if (!el) return;
+      var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+      setter.call(el, '${escaped}');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`
+  );
+}
+
+function login(account) {
   console.log(`  Logging in to ${account.name}...`);
-  await page.goto(`${account.baseUrl}/login`, { waitUntil: "load", timeout: 30000 }).catch(() => {});
+  ab("open", `${account.baseUrl}/login`);
+  ab("wait", 'input[type="password"]', "--timeout", "30000");
 
-  // Wait for login form to render (SPA may take a moment)
-  const passwordInput = page.locator('input[type="password"]').first();
-  await passwordInput.waitFor({ state: "visible", timeout: 30000 });
+  // C&D white-label apps use type="text" for the email/mobile field, not type="email"
+  fillInput('input[type="email"], input[type="text"]', account.email);
+  fillInput('input[type="password"]', account.password);
 
-  const emailInput = page
-    .locator(
-      'input[type="email"], input[name="email"], input[placeholder*="email" i]'
-    )
-    .first();
+  ab("click", 'button[type="submit"]');
+  ab("wait", "--url", "**/white-label-home", "--timeout", "20000");
+  sleep(3000);
 
-  await emailInput.fill(account.email);
-  await passwordInput.fill(account.password);
-
-  const submitBtn = page
-    .locator(
-      'button[type="submit"], button:has-text("Log in"), button:has-text("Sign in")'
-    )
-    .first();
-  await submitBtn.click();
-
-  await page.waitForURL(/white-label-home/, { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(2000);
-  console.log(`  Logged in. URL: ${page.url()}`);
+  // Check success by verifying expected destination (failed logins redirect to /log-in, not /login)
+  const url = stripQuotes(ab("eval", "window.location.href"));
+  if (!url || !url.includes("white-label-home")) {
+    throw new Error(`Login failed — landed on: ${url}`);
+  }
+  console.log(`  Logged in. URL: ${url}`);
 }
 
-// Shared: open kebab -> Filters -> change date range to "Last 90 Days" -> Save
-async function expandOrderHistoryFilter(page) {
-  await page.locator(".dropdown-toggle").first().click();
-  await page.waitForTimeout(500);
-  await page.locator("text=Filters").first().click();
-  await page.waitForTimeout(1000);
-  // Click whichever date range is currently shown (could be 30 or 90 days)
-  const dateDropdown = page.locator(".modal.show").locator("text=/Last \\d+ Days/i").first();
-  await dateDropdown.click();
-  await page.waitForTimeout(500);
-  await page.locator("text=Last 90 Days").first().click();
-  await page.waitForTimeout(500);
-  await page.locator(".modal.show").locator("text=Save").first().click();
+const ORDER_LINK_JS =
+  "document.querySelector('[href*=\"/orders-revised/view-one/\"]')?.getAttribute('href') || ''";
+
+function stripQuotes(s) {
+  return /^["'].*["']$/.test(s) ? s.slice(1, -1) : s;
 }
 
-async function resolveOrderCheckInPath(page, account) {
+function resolveOrderCheckInPath(account) {
   console.log("  Finding order check-in URL...");
-  await page.goto(`${account.baseUrl}/revised-order-history`, {
-    waitUntil: "load",
-    timeout: 30000,
-  }).catch(() => {});
-  await waitForPageReady(page);
+  ab("open", `${account.baseUrl}/revised-order-history`);
+  waitForPageReady();
+  waitForContent("order-history");
 
-  // Find the first order link on the order history page
-  let orderLink = await page
-    .locator('[href*="/orders-revised/view-one/"]')
-    .first()
-    .getAttribute("href", { timeout: 10000 })
-    .catch(() => null);
+  let href = stripQuotes(ab("eval", ORDER_LINK_JS));
 
-  // If no orders found, open the filter modal and change to "Last 90 Days"
-  if (!orderLink) {
+  if (!href) {
     console.log("  No orders with default filter — trying Last 90 Days...");
     try {
-      await expandOrderHistoryFilter(page);
-      await waitForPageReady(page);
-      orderLink = await page
-        .locator('[href*="/orders-revised/view-one/"]')
-        .first()
-        .getAttribute("href", { timeout: 10000 })
-        .catch(() => null);
+      ab("click", ".dropdown-toggle");
+      sleep(500);
+      ab("find", "text", "Filters", "click");
+      sleep(1000);
+      ab("find", "text", "Last 30 Days", "click");
+      sleep(500);
+      ab("find", "text", "Last 90 Days", "click");
+      sleep(500);
+      ab("find", "text", "Save", "click");
+      waitForPageReady();
+      waitForContent("order-history");
+      href = stripQuotes(ab("eval", ORDER_LINK_JS));
     } catch (e) {
       console.log(`  Filter change failed: ${e.message}`);
     }
   }
 
-  if (orderLink) {
-    const urlPath = orderLink.startsWith("http")
-      ? new URL(orderLink).pathname
-      : orderLink;
-    console.log(`  Found order check-in: ${urlPath}`);
+  if (href) {
+    const urlPath = href.startsWith("http") ? new URL(href).pathname : href;
+    console.log(`  Found: ${urlPath}`);
     return urlPath;
   }
 
-  console.log("  Warning: No orders found even with 90-day filter — skipping order-check-in page");
+  console.log("  Warning: No orders found — skipping order-check-in");
   return null;
 }
 
-// Wait for the page to fully load — no spinners, no skeleton screens
-async function waitForPageReady(page) {
-  // 1. Wait for network to be idle (no pending requests for 500ms)
-  await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
-
-  // 2. Wait for common loading indicators to disappear
-  const spinnerSelectors = [
-    // CSS animation spinners
-    '[class*="spinner"]',
-    '[class*="loading"]',
-    '[class*="loader"]',
-    // Animated SVG/icon spinners
-    ".animate-spin",
-    'svg[class*="spin"]',
-    // MUI / generic circular progress
-    '[role="progressbar"]',
-    // The specific C+D loading spinner (colored squares)
-    '[class*="LoadingIndicator"]',
-    '[class*="loadingIndicator"]',
-  ];
-
-  for (const selector of spinnerSelectors) {
-    try {
-      const spinner = page.locator(selector).first();
-      if (await spinner.isVisible({ timeout: 500 })) {
-        console.log(`    Waiting for ${selector} to disappear...`);
-        await spinner.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {});
-      }
-    } catch {}
-  }
-
-  // 3. Wait for images to finish loading
-  await page.evaluate(() => {
-    return Promise.all(
-      Array.from(document.images)
-        .filter((img) => !img.complete)
-        .map(
-          (img) =>
-            new Promise((resolve) => {
-              img.onload = img.onerror = resolve;
-            })
-        )
-    );
-  }).catch(() => {});
-
-  // 4. Final settle — let any post-load animations/transitions finish
-  await page.waitForTimeout(1500);
-}
-
-// Verify the page loaded real content (not just a spinner/blank page)
-function verifyScreenshot(page, pageName) {
-  return page.evaluate(() => {
-    // Check if body has meaningful content (more than just nav/header)
-    const body = document.body;
-    const text = body.innerText || "";
-    // A loaded page should have at least 50 chars of visible text
-    return text.trim().length > 50;
-  }).catch(() => false);
-}
-
-async function captureScreenshots(browser, account) {
-  console.log(`\n=== ${account.name} ===`);
-
-  // Single context per account — login once, dismiss banner once
-  const context = await browser.newContext({
-    viewport: { width: 411, height: 915 },
-  });
-  const page = await context.newPage();
-
-  // Login at mobile size so banner appears
-  await login(page, account);
-
-  // Dismiss the banner once — it stays dismissed for the session
-  await dismissBanner(page);
-
-  // Resolve the order-check-in path dynamically
-  const orderCheckInPath = await resolveOrderCheckInPath(page, account);
-  const pages = PAGES.map((p) =>
-    p.name === "order-check-in" ? { ...p, path: orderCheckInPath } : p
-  );
-
-  // Now capture each page at each viewport size
-  for (const [deviceName, viewport] of Object.entries(VIEWPORTS)) {
-    console.log(
-      `\n  Device: ${deviceName} (${viewport.width}x${viewport.height})`
-    );
-
-    // Resize viewport
-    await page.setViewportSize(viewport);
-
-    for (const pageInfo of pages) {
-      if (!pageInfo.path) {
-        console.log(`    SKIP ${pageInfo.name} (no URL found)`);
-        continue;
-      }
-
-      const outDir = path.join(ROOT, account.name, deviceName);
-      fs.mkdirSync(outDir, { recursive: true });
-      const outPath = path.join(outDir, `${pageInfo.name}.png`);
-
-      const url = `${account.baseUrl}${pageInfo.path}`;
-      await page
-        .goto(url, { waitUntil: "load", timeout: 30000 })
-        .catch(() => {});
-
-      // Wait for page to fully load (network idle + spinners gone + images loaded)
-      await waitForPageReady(page);
-
-      // Dismiss banner if it appears
-      await dismissBanner(page);
-
-      // If order-history shows no records, try expanding the date filter to 90 days
-      if (pageInfo.name === "order-history") {
-        const noRecords = await page.locator('text=/No Records Available/i').first().isVisible({ timeout: 2000 }).catch(() => false);
-        if (noRecords) {
-          console.log(`    No records — expanding filter to Last 90 Days...`);
-          try {
-            await expandOrderHistoryFilter(page);
-            await waitForPageReady(page);
-            await dismissBanner(page);
-          } catch (e) {
-            console.log(`    Filter change failed: ${e.message}`);
-          }
-        }
-      }
-
-      // If this page needs a tab click (e.g., Catalog tab)
-      if (pageInfo.clickTab) {
-        try {
-          const tab = page.locator(`text="${pageInfo.clickTab}"`).first();
-          if (await tab.isVisible({ timeout: 3000 })) {
-            await tab.click();
-            // Wait for the tab content to load — product cards with images
-            await waitForPageReady(page);
-            // Extra wait for product grid: look for product images or "Add to Cart" buttons
-            await page
-              .locator('img[src*="product"], img[src*="item"], button:has-text("Add to Cart"), [class*="product-card"], [class*="ProductCard"]')
-              .first()
-              .waitFor({ state: "visible", timeout: 20000 })
-              .catch(() => {
-                console.log(`    Warning: No product cards found after ${pageInfo.clickTab} tab click`);
-              });
-            // Wait for product images to fully render
-            await waitForPageReady(page);
-          }
-        } catch {
-          console.log(`    Warning: Could not click ${pageInfo.clickTab} tab`);
-        }
-      }
-
-      // Hide banner right before screenshot in case React re-rendered it
-      await dismissBanner(page);
-
-      // Verify page loaded real content
-      const hasContent = await verifyScreenshot(page, pageInfo.name);
-      if (!hasContent) {
-        console.log(`    WARN ${pageInfo.name} may not have fully loaded — retrying...`);
-        // Retry: reload and wait again
-        await page.reload({ waitUntil: "load", timeout: 30000 }).catch(() => {});
-        await waitForPageReady(page);
-        await dismissBanner(page);
-        const retryOk = await verifyScreenshot(page, pageInfo.name);
-        if (!retryOk) {
-          console.log(`    WARN ${pageInfo.name} still looks empty after retry`);
-        }
-      }
-
-      await page.screenshot({ path: outPath, type: "png" });
-      console.log(`    OK ${pageInfo.name}.png`);
-    }
-  }
-
-  await page.close();
-  await context.close();
-}
-
-async function main() {
-  const browser = await chromium.launch({ headless: true });
-
+function main() {
   for (const account of ACCOUNTS) {
-    await captureScreenshots(browser, account);
+    console.log(`\n=== ${account.name} ===`);
+
+    login(account);
+    dismissBanner();
+
+    const orderCheckInPath = resolveOrderCheckInPath(account);
+
+    for (const [viewportName, vp] of Object.entries(VIEWPORTS)) {
+      console.log(`\n  [${viewportName}] ${vp.width}x${vp.height}`);
+      const outDir = path.join(ROOT, account.name, viewportName);
+      fs.mkdirSync(outDir, { recursive: true });
+
+      ab("set", "viewport", String(vp.width), String(vp.height));
+
+      for (const page of PAGES) {
+        if (page.name === "order-check-in" && !orderCheckInPath) {
+          console.log(`    Skipping order-check-in (no order found)`);
+          continue;
+        }
+
+        const pagePath = page.name === "order-check-in" ? orderCheckInPath : page.path;
+        const outFile = path.join(outDir, `${page.name}.png`);
+
+        console.log(`    Capturing ${page.name}...`);
+        ab("open", `${account.baseUrl}${pagePath}`);
+        waitForPageReady();
+
+        // Select an order guide if the modal appears (required before order guide or catalog loads)
+        if (page.path === "/place-order") {
+          selectOrderGuideIfModalPresent();
+        }
+
+        if (page.clickTab) {
+          ab("find", "text", page.clickTab, "click");
+          sleep(2000);
+        }
+
+        waitForContent(page.name);
+        dismissBanner();
+        ab("screenshot", outFile);
+
+        const kb = Math.round(fs.statSync(outFile).size / 1024);
+        if (kb < 5) {
+          console.log(`    WARNING: ${page.name}.png is only ${kb}KB — likely blank`);
+        } else {
+          console.log(`    Saved: ${outFile} (${kb}KB)`);
+        }
+      }
+    }
+
+    console.log(`\n  Done with ${account.name}`);
   }
 
-  await browser.close();
-  console.log("\nAll screenshots captured!");
+  ab("close");
+  console.log("\nAll done!");
 }
 
-main().catch(console.error);
+main();
